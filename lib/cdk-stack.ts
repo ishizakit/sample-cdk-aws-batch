@@ -3,7 +3,7 @@ import * as ec2 from '@aws-cdk/aws-ec2';
 import * as iam from '@aws-cdk/aws-iam';
 import * as batch from '@aws-cdk/aws-batch';
 import * as ecs from '@aws-cdk/aws-ecs';
-import * as ecrassets from '@aws-cdk/aws-ecr-assets';
+import * as ecr from '@aws-cdk/aws-ecr';
 
 export class CdkStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -11,14 +11,79 @@ export class CdkStack extends cdk.Stack {
 
     /*
      * 1. コンピューティング環境の用意
-     * コンピューティング環境の作成する場合はここから行う
-     * 既存のコンピューティング環境を使用する場合は 既存のコンピューティング環境を使う場合 をコメントアウトして使用
      */
-    // // 既存のコンピューティング環境を使う場合
-    // const computeEnvironment: batch.ComputeEnvironment = batch.ComputeEnvironment.fromComputeEnvironmentArn(
-    //   this, 'BatchCompute', 'arn:aws:batch:ap-northeast-1:0123456789:compute-environment/ExampleComputeEnvironment'
-    // );
+    // 既存のコンピューティング環境を使う場合
+    const computeEnvironment: batch.IComputeEnvironment = batch.ComputeEnvironment.fromComputeEnvironmentArn(
+      this, 'BatchCompute', 'arn:aws:batch:ap-northeast-1:0123456789:compute-environment/ExampleComputeEnvironment'
+    );
 
+    // 新規でコンピューティング環境の作成する場合
+    // const computeEnvironment: batch.IComputeEnvironment = this.createComputeEnvironment()
+
+
+    /*
+     * 2. イメージの用意
+     * Jobで使用するイメージをECRにプッシュする
+     * 事前にリポジトリを用意する必要はない
+     * Dockerfileだけ用意してあれば事前にビルドする必要もない
+     */
+    // Dockerイメージを作成してECRにプッシュ
+    const tag = '適当なタグ名'
+    const imageAsset: cdk.DockerImageAssetLocation = this.synthesizer.addDockerImageAsset({
+      sourceHash: tag,
+      directoryName: `./docker/`,
+      repositoryName: 'example',
+    })
+
+    // ECRからリポジトリを取得
+    const repository: ecr.IRepository = ecr.Repository.fromRepositoryName(
+      this,
+      `ECRRepository`,
+      imageAsset.repositoryName,
+    )
+
+    // リポジトリから特定のイメージを取得
+    const image = ecs.ContainerImage.fromEcrRepository(repository, tag)
+
+
+    /*
+     * 3. ジョブキューとジョブ定義を用意
+     */
+    // Job用ロールを作成
+    const jobRole: iam.IRole = new iam.Role(this, 'JobRole', {
+      roleName: 'ExampleJobRole',
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
+      ),
+    });
+
+    // ジョブキューを作成
+    new batch.JobQueue(this, 'JobQueue', {
+      jobQueueName: 'ExampleJobQueue',
+      computeEnvironments: [{
+          computeEnvironment: computeEnvironment,
+          order: 1,
+      }],
+    });
+
+    // ジョブの定義を作成
+    new batch.JobDefinition(this, 'JobDefinition', {
+      jobDefinitionName: 'ExampleJobDefinition',
+      container: {
+        command: ['date'],
+        environment: {'TZ': 'Asia/Tokyo'},
+        image: image,
+        jobRole: jobRole,
+        vcpus: 1,
+        memoryLimitMiB: 100,
+      }
+    });
+  }
+
+
+
+  // 新規でコンピューティング環境を作成する
+  protected createComputeEnvironment(): batch.IComputeEnvironment {
     /*
      * 1-1. ネットワーク情報を取得
      */
@@ -106,63 +171,6 @@ export class CdkStack extends cdk.Stack {
       serviceRole: batchRole,
     });
 
-
-    /*
-     * 2. イメージの用意
-     * Jobで使用するイメージをECRにプッシュする
-     * 事前にリポジトリを用意する必要はない
-     * Dockerfileだけ用意してあれば事前にビルドする必要もない
-     */
-    // Dockerイメージを作成してECRにプッシュ
-    const tag = '適当なタグ名'
-    const imageAsset: cdk.DockerImageAssetLocation = this.synthesizer.addDockerImageAsset({
-      sourceHash: tag,
-      directoryName: `./docker/`,
-      repositoryName: 'example',
-    })
-
-    // ECRからリポジトリを取得
-    const repository: ecr.IRepository = ecr.Repository.fromRepositoryName(
-      this,
-      `ECRRepository`,
-      imageAsset.repositoryName,
-    )
-
-    // リポジトリから特定のイメージを取得
-    const image = ecs.ContainerImage.fromEcrRepository(repository, tag)
-
-
-    /*
-     * 3. ジョブキューとジョブ定義を用意
-     */
-    // Job用ロールを作成
-    const jobRole: iam.IRole = new iam.Role(this, 'JobRole', {
-      roleName: 'ExampleJobRole',
-      assumedBy: new iam.CompositePrincipal(
-        new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-      ),
-    });
-
-    // ジョブキューを作成
-    new batch.JobQueue(this, 'JobQueue', {
-      jobQueueName: 'ExampleJobQueue',
-      computeEnvironments: [{
-          computeEnvironment: computeEnvironment,
-          order: 1,
-      }],
-    });
-
-    // ジョブの定義を作成
-    new batch.JobDefinition(this, 'JobDefinition', {
-      jobDefinitionName: 'ExampleJobDefinition',
-      container: {
-        command: ['date'],
-        environment: {'TZ': 'Asia/Tokyo'},
-        image: image,
-        jobRole: jobRole,
-        vcpus: 1,
-        memoryLimitMiB: 100,
-      }
-    });
+    return computeEnvironment
   }
 }
