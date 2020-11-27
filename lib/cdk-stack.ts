@@ -31,7 +31,7 @@ export class CdkStack extends cdk.Stack {
     const tag = '適当なタグ名'
     const imageAsset: cdk.DockerImageAssetLocation = this.synthesizer.addDockerImageAsset({
       sourceHash: tag,
-      directoryName: `./docker/`,
+      directoryName: `${__dirname}/../`,
       repositoryName: 'example',
     })
 
