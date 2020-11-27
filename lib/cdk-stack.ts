@@ -114,14 +114,22 @@ export class CdkStack extends cdk.Stack {
      * Dockerfileだけ用意してあれば事前にビルドする必要もない
      */
     // Dockerイメージを作成してECRにプッシュ
-    // 現在は推奨されていないため、使用できなくなる可能性がある
-    // 推奨されている方法がわからないため、この方法でプッシュしている
-    const imageAsset: ecrassets.DockerImageAsset = new ecrassets.DockerImageAsset(this, 'DockerImageAsset', {
-      directory: './docker/',
+    const tag = '適当なタグ名'
+    const imageAsset: cdk.DockerImageAssetLocation = this.synthesizer.addDockerImageAsset({
+      sourceHash: tag,
+      directoryName: `./docker/`,
       repositoryName: 'example',
-      file: './Dockerfile',
-    });
-    const image: ecs.ContainerImage = ecs.ContainerImage.fromDockerImageAsset(imageAsset);
+    })
+
+    // ECRからリポジトリを取得
+    const repository: ecr.IRepository = ecr.Repository.fromRepositoryName(
+      this,
+      `ECRRepository`,
+      imageAsset.repositoryName,
+    )
+
+    // リポジトリから特定のイメージを取得
+    const image = ecs.ContainerImage.fromEcrRepository(repository, tag)
 
 
     /*
