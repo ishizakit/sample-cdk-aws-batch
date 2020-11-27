@@ -141,13 +141,6 @@ export class CdkStack extends cdk.Stack {
       assumedBy: new iam.CompositePrincipal(
         new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       ),
-      managedPolicies: [
-        iam.ManagedPolicy.fromManagedPolicyArn(
-          this,
-          'AmazonECSTaskExecutionRolePolicy',
-          'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy',
-        ),
-      ],
     });
 
     // ジョブキューを作成
